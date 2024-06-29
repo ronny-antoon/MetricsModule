@@ -1,0 +1,33 @@
+{
+    "idf.flashType": "UART",
+    "idf.portWin": "COM9",
+    "idf.adapterTargetName": "esp32",
+    // "files.associations": {
+    //     "vector": "cpp",
+    //     "cstdint": "cpp",
+    //     "complex": "cpp",
+    //     "array": "cpp",
+    //     "tuple": "cpp",
+    //     "utility": "cpp",
+    //     "variant": "cpp",
+    //     "new": "cpp",
+    //     "*.ipp": "cpp"
+    // },
+    // "idf.openOcdConfigs": [
+    //     "interface/ftdi/esp32_devkitj_v1.cfg",
+    //     "target/esp32.cfg"
+    // ],
+    "C_Cpp.clang_format_style": "file",
+    "editor.formatOnSave": false,
+    "files.associations": {
+        "chrono": "cpp",
+        "typeinfo": "cpp",
+        "new": "cpp",
+        "*.tcc": "cpp",
+        "string_view": "cpp",
+        "functional": "cpp",
+        "variant": "cpp",
+        "*.ipp": "cpp",
+        "regex": "cpp"
+    },
+}

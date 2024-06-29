@@ -1,0 +1,72 @@
+menu "Metrics Module"
+    config M_M_ENABLED
+        bool
+        prompt "Enable Metrics Module"
+        default y
+        help
+          Enable Metrics Module
+
+    config M_M_PRINT_METRICS
+        bool
+        prompt "Print Metrics"
+        default y
+        help
+          Print Metrics
+
+    config M_M_SEND_METRICS_PERIOD
+        int
+        prompt "Send Metrics Period in minutes"
+        default 1
+        help
+          Send Metrics Period in minutes
+
+    config M_M_BUFFER_SIZE
+        int
+        prompt "Metrics Buffer Size"
+        default 4096
+        help
+          Metrics Buffer Size
+
+    config M_M_TASK_STACK_SIZE
+        int
+        prompt "Metrics Task Stack Size"
+        default 8192
+        help
+          Metrics Task Stack Size
+
+    config M_M_TASK_PRIORITY
+        int
+        prompt "Metrics Task Priority"
+        default 10
+        range 1 31
+        help
+          Metrics Task Priority
+
+    config M_M_DEFAULT_DATABASE_URL
+        string
+        prompt "Default URL"
+        default "https://firestore.googleapis.com/v1/projects/newronny-37128/databases/(default)/documents"
+        help
+          Default URL for the database without "/" at the end
+
+    config M_M_DEFAULT_DEVICE_LOCATION
+        string
+        prompt "Default Device Location"
+        default "defaultLocation"
+        help
+          Default Device Location
+
+    config M_M_HTTP_TIMEOUT_MS
+        int
+        prompt "HTTP Timeout in ms"
+        default 10000
+        help
+          HTTP Timeout in ms
+
+    config M_M_PRINT_METRICS_BUFFER
+        bool
+        prompt "Print Metrics Buffer"
+        default y
+        help
+          Print Metrics Buffer
+endmenu

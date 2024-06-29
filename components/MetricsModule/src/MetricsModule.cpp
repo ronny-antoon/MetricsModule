@@ -1,16 +1,4 @@
-/**
- * @details Example of Https post body json format:
- * {
- *    "fields": {
- *       "MetricName": {"integerValue"  : MerticValue},
- *       "timestamp" : {"timestampValue": "2021-01-01T00:00:00Z"}
- *   }
- * }
- *
- * @details the device id is used in the url.
- */
 #include "MetricsModule.hpp"
-
 #include <arch/sys_arch.h>
 #include <esp_event.h>
 #include <esp_http_client.h>
@@ -23,17 +11,17 @@
 #include <freertos/task.h>
 
 static const char * TAG = "MetricsModule";
-
 #define DEVICEID_SIZE 5
 
-MetricsModule::MetricsModule(const char * databaseURL, const char * deviceLocation) :
-    m_keyId(0), m_senderTaskHandle(nullptr), m_databaseURL(databaseURL), m_deviceLocation(deviceLocation)
+MetricsModule::MetricsModule(const char * databaseUrl, const char * deviceLocation) :
+    m_keyId(0), m_senderTaskHandle(nullptr), m_databaseUrl(databaseUrl), m_deviceLocation(deviceLocation)
 {
     ESP_LOGI(TAG, "MetricsModule created");
-    if (m_databaseURL == nullptr)
+
+    if (m_databaseUrl == nullptr)
     {
-        m_databaseURL = CONFIG_M_M_DEFAULT_DATABASE_URL;
-        ESP_LOGW(TAG, "No database URL provided, using default: %s", m_databaseURL);
+        m_databaseUrl = CONFIG_M_M_DEFAULT_DATABASE_URL;
+        ESP_LOGW(TAG, "No database URL provided, using default: %s", m_databaseUrl);
     }
     if (m_deviceLocation == nullptr)
     {
@@ -41,14 +29,27 @@ MetricsModule::MetricsModule(const char * databaseURL, const char * deviceLocati
         ESP_LOGW(TAG, "No device ID provided, using default: %s", m_deviceLocation);
     }
 
-    size_t urlSize = strlen(m_databaseURL) + strlen(m_deviceLocation) + 2;
+    size_t urlSize = strlen(m_databaseUrl) + strlen(m_deviceLocation) + 2;
     char * fullURL = (char *) malloc(urlSize);
-    snprintf(fullURL, urlSize, "%s/%s", m_databaseURL, m_deviceLocation);
-    m_databaseURL = fullURL;
+    if (fullURL == nullptr)
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for full URL");
+        return;
+    }
+    snprintf(fullURL, urlSize, "%s/%s", m_databaseUrl, m_deviceLocation);
+    m_databaseUrl = fullURL;
 
     m_metricsBuffer = (char *) calloc(CONFIG_M_M_BUFFER_SIZE, sizeof(char));
+    if (m_metricsBuffer == nullptr)
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for metrics buffer");
+        return;
+    }
 
-    generatRandomDeviceId();
+    if (generateRandomDeviceId() != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to generate random device ID");
+    }
 }
 
 MetricsModule::~MetricsModule()
@@ -58,6 +59,7 @@ MetricsModule::~MetricsModule()
         vTaskDelete(m_senderTaskHandle);
     }
     free((void *) m_metricsBuffer);
+    free((void *) m_databaseUrl);
     free((void *) m_deviceId);
 
     ESP_LOGI(TAG, "MetricsModule destroyed");
@@ -67,7 +69,7 @@ esp_err_t MetricsModule::start()
 {
     if (m_metricsBuffer == nullptr)
     {
-        ESP_LOGE(TAG, "Failed to allocate memory for metrics buffer");
+        ESP_LOGE(TAG, "Metrics buffer is not allocated");
         return ESP_ERR_NO_MEM;
     }
     if (m_senderTaskHandle != nullptr)
@@ -77,41 +79,67 @@ esp_err_t MetricsModule::start()
     }
     if (!CONFIG_M_M_ENABLED)
     {
-        ESP_LOGW(TAG, "MetricsModule is disabled, if you want to enable it set CONFIG_M_M_ENABLED to y in sdkconfig.");
+        ESP_LOGW(TAG, "MetricsModule is disabled. Enable it by setting CONFIG_M_M_ENABLED to y in sdkconfig.");
         return ESP_OK;
     }
     ESP_LOGI(TAG, "Starting metrics sender task");
-    xTaskCreate(&MetricsModule::senderTask, "metrics_sender_task", CONFIG_M_M_TASK_STACK_SIZE, this, CONFIG_M_M_TASK_PRIORITY,
-                &m_senderTaskHandle);
+    if (xTaskCreate(&MetricsModule::senderTask, "metrics_sender_task", CONFIG_M_M_TASK_STACK_SIZE, this, CONFIG_M_M_TASK_PRIORITY,
+                    &m_senderTaskHandle) != pdPASS)
+    {
+        ESP_LOGE(TAG, "Failed to create metrics sender task");
+        return ESP_FAIL;
+    }
     return ESP_OK;
 }
 
 void MetricsModule::senderTask(void * pvParameters)
 {
     MetricsModule * self = (MetricsModule *) pvParameters;
-    bool isTimeCurrect   = false;
+    bool isTimeCorrect   = false;
     while (true)
     {
+        if (self->resetBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to reset buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
+            continue;
+        }
+        if (self->addPrefixJsonToBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to add prefix JSON to buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
+            continue;
+        }
 
-        self->resetBuffer();
-        self->addPrefixJsonToBuffer();
-
-        isTimeCurrect = self->addTimestampToBuffer() == ESP_OK;
-        self->addDeviceIdToBuffer();
-
-        self->addFreeHeapToBuffer();
-        self->addTasksFreeStackToBuffer();
-
-        self->addPostfixJsonToBuffer();
+        isTimeCorrect = self->addTimestampToBuffer() == ESP_OK;
+        if (self->addDeviceIdToBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to add device ID to buffer");
+        }
+        if (self->addFreeHeapToBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to add free heap to buffer");
+        }
+        if (self->addTasksFreeStackToBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to add tasks free stack to buffer");
+        }
+        if (self->addPostfixJsonToBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to add postfix JSON to buffer");
+        }
 
         if (CONFIG_M_M_PRINT_METRICS_BUFFER)
         {
-            self->printMetricBuffer();
+            if (self->printMetricBuffer() != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to print metric buffer");
+            }
         }
 
-        if (!self->checkNetworkConnection() && !isTimeCurrect)
+        if (!self->checkNetworkConnection() && !isTimeCorrect)
         {
-            ESP_LOGW(TAG, "No network connection or Time not currect, retrying in %d minutes", CONFIG_M_M_SEND_METRICS_PERIOD);
+            ESP_LOGW(TAG, "No network connection or time not correct. Retrying in %d minutes", CONFIG_M_M_SEND_METRICS_PERIOD);
             vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
             continue;
         }
@@ -127,6 +155,11 @@ void MetricsModule::senderTask(void * pvParameters)
 
 esp_err_t MetricsModule::resetBuffer()
 {
+    if (m_metricsBuffer == nullptr)
+    {
+        ESP_LOGE(TAG, "Metrics buffer is not allocated");
+        return ESP_ERR_INVALID_STATE;
+    }
     m_keyId = 0;
     memset(m_metricsBuffer, 0, CONFIG_M_M_BUFFER_SIZE);
     return ESP_OK;
@@ -134,12 +167,22 @@ esp_err_t MetricsModule::resetBuffer()
 
 esp_err_t MetricsModule::addPrefixJsonToBuffer()
 {
+    if (m_metricsBuffer == nullptr)
+    {
+        ESP_LOGE(TAG, "Metrics buffer is not allocated");
+        return ESP_ERR_INVALID_STATE;
+    }
     strcat(m_metricsBuffer, "{\"fields\":{");
     return ESP_OK;
 }
 
 esp_err_t MetricsModule::addPostfixJsonToBuffer()
 {
+    if (m_metricsBuffer == nullptr)
+    {
+        ESP_LOGE(TAG, "Metrics buffer is not allocated");
+        return ESP_ERR_INVALID_STATE;
+    }
     strcat(m_metricsBuffer, "}}");
     return ESP_OK;
 }
@@ -151,9 +194,14 @@ esp_err_t MetricsModule::addMetricToBuffer(const char * metricName, const char *
 
 esp_err_t MetricsModule::addMetricToBuffer(const char * metricName, const char * metricValue, const char * metricType)
 {
+    if (m_metricsBuffer == nullptr)
+    {
+        ESP_LOGE(TAG, "Metrics buffer is not allocated");
+        return ESP_ERR_INVALID_STATE;
+    }
     if (strlen(m_metricsBuffer) + strlen(metricName) + strlen(metricValue) + strlen(metricType) + 32 > CONFIG_M_M_BUFFER_SIZE)
     {
-        ESP_LOGE(TAG, "Buffer is full, failed to add metric");
+        ESP_LOGE(TAG, "Buffer is full. Failed to add metric");
         return ESP_ERR_NO_MEM;
     }
 
@@ -181,7 +229,7 @@ esp_err_t MetricsModule::addTimestampToBuffer()
     localtime_r(&now, &timeinfo);
     if ((timeinfo.tm_year + 1900) < 2020)
     {
-        ESP_LOGW(TAG, "Time is not currect (%d) year, skipping timestamp metric", (timeinfo.tm_year + 1900));
+        ESP_LOGW(TAG, "Time is not correct (%d year). Skipping timestamp metric", (timeinfo.tm_year + 1900));
         esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
         esp_netif_sntp_init(&config);
         return ESP_FAIL;
@@ -197,7 +245,7 @@ esp_err_t MetricsModule::addDeviceIdToBuffer()
 
 esp_err_t MetricsModule::addFreeHeapToBuffer()
 {
-    const char * freeHeepKey    = "freeHeap";
+    const char * freeHeapKey    = "freeHeap";
     const char * minFreeHeapKey = "minFreeHeap";
 
     char freeHeapValue[40];
@@ -206,7 +254,7 @@ esp_err_t MetricsModule::addFreeHeapToBuffer()
     char minFreeHeapValue[40];
     snprintf(minFreeHeapValue, sizeof(minFreeHeapValue), "%d", (int) esp_get_minimum_free_heap_size());
 
-    addMetricToBuffer(freeHeepKey, freeHeapValue);
+    addMetricToBuffer(freeHeapKey, freeHeapValue);
     addMetricToBuffer(minFreeHeapKey, minFreeHeapValue);
 
     return ESP_OK;
@@ -218,8 +266,18 @@ esp_err_t MetricsModule::addTasksFreeStackToBuffer()
     volatile UBaseType_t uxArraySize;
 
     uxArraySize = uxTaskGetNumberOfTasks();
+    if (uxArraySize == 0)
+    {
+        ESP_LOGW(TAG, "No tasks found");
+        return ESP_FAIL;
+    }
 
     pxTaskStatusArray = (TaskStatus_t *) malloc(uxArraySize * sizeof(TaskStatus_t));
+    if (pxTaskStatusArray == nullptr)
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for task status array");
+        return ESP_ERR_NO_MEM;
+    }
 
     uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize, NULL);
     for (UBaseType_t i = 0; i < uxArraySize; i++)
@@ -239,33 +297,55 @@ esp_err_t MetricsModule::addTasksFreeStackToBuffer()
     }
 
     free(pxTaskStatusArray);
-
     return ESP_OK;
 }
 
 esp_err_t MetricsModule::sendBufferedMetrics()
 {
-    if (strlen(m_metricsBuffer) == 0)
+    if (m_metricsBuffer == nullptr || strlen(m_metricsBuffer) == 0)
     {
         ESP_LOGW(TAG, "No metrics to send");
         return ESP_OK;
     }
 
     esp_http_client_config_t config = {
-        .url        = m_databaseURL,
+        .url        = m_databaseUrl,
         .method     = HTTP_METHOD_POST,
         .timeout_ms = CONFIG_M_M_HTTP_TIMEOUT_MS,
         .user_data  = this,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == nullptr)
+    {
+        ESP_LOGE(TAG, "Failed to initialize HTTP client");
+        return ESP_FAIL;
+    }
 
-    esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_post_field(client, m_metricsBuffer, strlen(m_metricsBuffer));
-    esp_http_client_perform(client);
+    esp_err_t err;
+    err = esp_http_client_set_header(client, "Content-Type", "application/json");
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to set HTTP header: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        return err;
+    }
 
-    esp_err_t err = esp_http_client_cleanup(client);
+    err = esp_http_client_set_post_field(client, m_metricsBuffer, strlen(m_metricsBuffer));
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to set HTTP post field: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        return err;
+    }
 
+    err = esp_http_client_perform(client);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to perform HTTP request: %s", esp_err_to_name(err));
+    }
+
+    esp_http_client_cleanup(client);
     return err;
 }
 
@@ -291,12 +371,17 @@ bool MetricsModule::checkNetworkConnection()
 
 esp_err_t MetricsModule::printMetricBuffer()
 {
-    ESP_LOGI(TAG, "URL: %s", m_databaseURL);
+    if (m_metricsBuffer == nullptr)
+    {
+        ESP_LOGE(TAG, "Metrics buffer is not allocated");
+        return ESP_ERR_INVALID_STATE;
+    }
+    ESP_LOGI(TAG, "URL: %s", m_databaseUrl);
     ESP_LOGI(TAG, "Metrics buffer: \n%s\n", m_metricsBuffer);
     return ESP_OK;
 }
 
-esp_err_t MetricsModule::generatRandomDeviceId()
+esp_err_t MetricsModule::generateRandomDeviceId()
 {
     // Array to hold random bytes
     uint8_t randomBytes[DEVICEID_SIZE];
@@ -328,6 +413,11 @@ esp_err_t MetricsModule::generatRandomDeviceId()
 
     // Duplicate the string to m_deviceId
     m_deviceId = strdup(deviceId);
+    if (m_deviceId == nullptr)
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for device ID");
+        return ESP_ERR_NO_MEM;
+    }
 
     // Log the generated device ID
     ESP_LOGI(TAG, "Generated random device ID: %s", m_deviceId);

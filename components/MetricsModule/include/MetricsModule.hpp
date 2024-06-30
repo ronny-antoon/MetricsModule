@@ -30,6 +30,8 @@ public:
      */
     esp_err_t start();
 
+    static void printStackTask();
+
 private:
     uint8_t m_keyId;                 ///< Key ID for metrics buffer.
     char * m_metricsBuffer;          ///< Buffer for storing metrics data.

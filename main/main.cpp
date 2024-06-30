@@ -63,8 +63,16 @@ extern "C" void app_main()
 {
     wifi_init_sta();
 
+    vTaskDelay(20000 / portTICK_PERIOD_MS);
+
     MetricsModule * metricsModule = new MetricsModule();
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+
     metricsModule->start();
+
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+
+    vTaskDelay(60000 * 2 / portTICK_PERIOD_MS);
 
     while (true)
     {

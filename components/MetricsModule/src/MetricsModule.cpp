@@ -110,7 +110,6 @@ void MetricsModule::senderTask(void * pvParameters)
             vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
             continue;
         }
-
         isTimeCorrect = self->addTimestampToBuffer() == ESP_OK;
         if (self->addDeviceIdToBuffer() != ESP_OK)
         {
@@ -128,7 +127,6 @@ void MetricsModule::senderTask(void * pvParameters)
         {
             ESP_LOGE(TAG, "Failed to add postfix JSON to buffer");
         }
-
         if (CONFIG_M_M_PRINT_METRICS_BUFFER)
         {
             if (self->printMetricBuffer() != ESP_OK)
@@ -136,19 +134,16 @@ void MetricsModule::senderTask(void * pvParameters)
                 ESP_LOGE(TAG, "Failed to print metric buffer");
             }
         }
-
         if (!self->checkNetworkConnection() && !isTimeCorrect)
         {
             ESP_LOGW(TAG, "No network connection or time not correct. Retrying in %d minutes", CONFIG_M_M_SEND_METRICS_PERIOD);
             vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
             continue;
         }
-
         if (self->sendBufferedMetrics() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to send buffered metrics");
         }
-
         vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
     }
 }
@@ -172,7 +167,7 @@ esp_err_t MetricsModule::addPrefixJsonToBuffer()
         ESP_LOGE(TAG, "Metrics buffer is not allocated");
         return ESP_ERR_INVALID_STATE;
     }
-    strcat(m_metricsBuffer, "{\"fields\":{");
+    snprintf(m_metricsBuffer, CONFIG_M_M_BUFFER_SIZE, "{\"fields\":{");
     return ESP_OK;
 }
 
@@ -183,7 +178,7 @@ esp_err_t MetricsModule::addPostfixJsonToBuffer()
         ESP_LOGE(TAG, "Metrics buffer is not allocated");
         return ESP_ERR_INVALID_STATE;
     }
-    strcat(m_metricsBuffer, "}}");
+    strncat(m_metricsBuffer, "}}", CONFIG_M_M_BUFFER_SIZE - strlen(m_metricsBuffer) - 1);
     return ESP_OK;
 }
 
@@ -205,13 +200,9 @@ esp_err_t MetricsModule::addMetricToBuffer(const char * metricName, const char *
         return ESP_ERR_NO_MEM;
     }
 
-    strcat(m_metricsBuffer, "\"");
-    strcat(m_metricsBuffer, metricName);
-    strcat(m_metricsBuffer, "\":{\"");
-    strcat(m_metricsBuffer, metricType);
-    strcat(m_metricsBuffer, "\":");
-    strcat(m_metricsBuffer, metricValue);
-    strcat(m_metricsBuffer, "},");
+    size_t currentLength = strlen(m_metricsBuffer);
+    snprintf(m_metricsBuffer + currentLength, CONFIG_M_M_BUFFER_SIZE - currentLength, "\"%s\":{\"%s\":%s},", metricName, metricType,
+             metricValue);
     return ESP_OK;
 }
 
@@ -319,14 +310,12 @@ esp_err_t MetricsModule::sendBufferedMetrics()
         .timeout_ms = CONFIG_M_M_HTTP_TIMEOUT_MS,
         .user_data  = this,
     };
-
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == nullptr)
     {
         ESP_LOGE(TAG, "Failed to initialize HTTP client");
         return ESP_FAIL;
     }
-
     esp_err_t err;
     err = esp_http_client_set_header(client, "Content-Type", "application/json");
     if (err != ESP_OK)
@@ -335,7 +324,6 @@ esp_err_t MetricsModule::sendBufferedMetrics()
         esp_http_client_cleanup(client);
         return err;
     }
-
     err = esp_http_client_set_post_field(client, m_metricsBuffer, strlen(m_metricsBuffer));
     if (err != ESP_OK)
     {
@@ -343,13 +331,11 @@ esp_err_t MetricsModule::sendBufferedMetrics()
         esp_http_client_cleanup(client);
         return err;
     }
-
     err = esp_http_client_perform(client);
     if (err != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to perform HTTP request: %s", esp_err_to_name(err));
     }
-
     esp_http_client_cleanup(client);
     return err;
 }
@@ -428,4 +414,48 @@ esp_err_t MetricsModule::generateRandomDeviceId()
     ESP_LOGI(TAG, "Generated random device ID: %s", m_deviceId);
 
     return ESP_OK;
+}
+
+void MetricsModule::printStackTask()
+{
+    ESP_LOGI(TAG, "Free heap size: %d", (int) esp_get_free_heap_size());
+    ESP_LOGI(TAG, "Minimum free heap size: %d", (int) esp_get_minimum_free_heap_size());
+
+    TaskStatus_t * pxTaskStatusArray;
+    volatile UBaseType_t uxArraySize;
+
+    // Get the number of tasks
+    uxArraySize = uxTaskGetNumberOfTasks();
+
+    // Allocate memory for the task status array
+    pxTaskStatusArray = (TaskStatus_t *) malloc(uxArraySize * sizeof(TaskStatus_t));
+
+    // Get the system state
+    uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize, NULL);
+
+    // Print table header
+    ESP_LOGI(TAG, "---------------------------------------------------------");
+    ESP_LOGI(TAG, "|Task Name            |Status |Prio |HWM    |Task Number|");
+    ESP_LOGI(TAG, "---------------------------------------------------------");
+
+    // Print each task information
+    for (UBaseType_t x = 0; x < uxArraySize; x++)
+    {
+        if ((int) pxTaskStatusArray[x].usStackHighWaterMark < 500)
+        {
+            ESP_LOGW(TAG, "|%-20s |%-6d |%-4d |%-6d |%-11d|", pxTaskStatusArray[x].pcTaskName,
+                     (int) pxTaskStatusArray[x].eCurrentState, (int) pxTaskStatusArray[x].uxCurrentPriority,
+                     (int) pxTaskStatusArray[x].usStackHighWaterMark, (int) pxTaskStatusArray[x].xTaskNumber);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "|%-20s |%-6d |%-4d |%-6d |%-11d|", pxTaskStatusArray[x].pcTaskName,
+                     (int) pxTaskStatusArray[x].eCurrentState, (int) pxTaskStatusArray[x].uxCurrentPriority,
+                     (int) pxTaskStatusArray[x].usStackHighWaterMark, (int) pxTaskStatusArray[x].xTaskNumber);
+        }
+    }
+    ESP_LOGI(TAG, "---------------------------------------------------------");
+
+    // deallocate the array
+    free(pxTaskStatusArray);
 }

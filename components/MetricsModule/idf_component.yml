@@ -5,4 +5,4 @@ description: 'MetricsModule is a C++ class designed for collecting and sending m
 repository: 'https://github.com/ronny-antoon/MetricsModule'
 url: 'https://github.com/ronny-antoon/MetricsModule'
 license: MIT
-version: 1.0.0
+version: 1.0.1

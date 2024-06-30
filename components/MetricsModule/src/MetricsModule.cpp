@@ -26,7 +26,7 @@ MetricsModule::MetricsModule(const char * databaseUrl, const char * deviceLocati
     if (m_deviceLocation == nullptr)
     {
         m_deviceLocation = CONFIG_M_M_DEFAULT_DEVICE_LOCATION;
-        ESP_LOGW(TAG, "No device ID provided, using default: %s", m_deviceLocation);
+        ESP_LOGW(TAG, "No device Location provided, using default: %s", m_deviceLocation);
     }
 
     size_t urlSize = strlen(m_databaseUrl) + strlen(m_deviceLocation) + 2;
@@ -230,8 +230,13 @@ esp_err_t MetricsModule::addTimestampToBuffer()
     if ((timeinfo.tm_year + 1900) < 2020)
     {
         ESP_LOGW(TAG, "Time is not correct (%d year). Skipping timestamp metric", (timeinfo.tm_year + 1900));
-        esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-        esp_netif_sntp_init(&config);
+        static bool sntpInitialized = false;
+        if (!sntpInitialized) // Initialize SNTP if not already initialized
+        {
+            esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+            esp_netif_sntp_init(&config);
+            sntpInitialized = true;
+        }
         return ESP_FAIL;
     }
     strftime(timestamp, sizeof(timestamp), "\"%Y-%m-%dT%H:%M:%SZ\"", &timeinfo);

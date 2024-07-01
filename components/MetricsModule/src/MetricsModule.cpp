@@ -134,7 +134,7 @@ void MetricsModule::senderTask(void * pvParameters)
                 ESP_LOGE(TAG, "Failed to print metric buffer");
             }
         }
-        if (!self->checkNetworkConnection() && !isTimeCorrect)
+        if (!isTimeCorrect || !self->checkNetworkConnection())
         {
             ESP_LOGW(TAG, "No network connection or time not correct. Retrying in %d minutes", CONFIG_M_M_SEND_METRICS_PERIOD);
             vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
@@ -418,8 +418,8 @@ esp_err_t MetricsModule::generateRandomDeviceId()
 
 void MetricsModule::printStackTask()
 {
-    ESP_LOGI(TAG, "Free heap size: %d", (int) esp_get_free_heap_size());
-    ESP_LOGI(TAG, "Minimum free heap size: %d", (int) esp_get_minimum_free_heap_size());
+    ESP_LOGW(TAG, "Free heap size: %d", (int) esp_get_free_heap_size());
+    ESP_LOGW(TAG, "Minimum free heap size: %d", (int) esp_get_minimum_free_heap_size());
 
     TaskStatus_t * pxTaskStatusArray;
     volatile UBaseType_t uxArraySize;
@@ -434,27 +434,27 @@ void MetricsModule::printStackTask()
     uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize, NULL);
 
     // Print table header
-    ESP_LOGI(TAG, "---------------------------------------------------------");
-    ESP_LOGI(TAG, "|Task Name            |Status |Prio |HWM    |Task Number|");
-    ESP_LOGI(TAG, "---------------------------------------------------------");
+    ESP_LOGW(TAG, "---------------------------------------------------------");
+    ESP_LOGW(TAG, "|Task Name            |Status |Prio |HWM    |Task Number|");
+    ESP_LOGW(TAG, "---------------------------------------------------------");
 
     // Print each task information
     for (UBaseType_t x = 0; x < uxArraySize; x++)
     {
         if ((int) pxTaskStatusArray[x].usStackHighWaterMark < 500)
         {
-            ESP_LOGW(TAG, "|%-20s |%-6d |%-4d |%-6d |%-11d|", pxTaskStatusArray[x].pcTaskName,
+            ESP_LOGE(TAG, "|%-20s |%-6d |%-4d |%-6d |%-11d|", pxTaskStatusArray[x].pcTaskName,
                      (int) pxTaskStatusArray[x].eCurrentState, (int) pxTaskStatusArray[x].uxCurrentPriority,
                      (int) pxTaskStatusArray[x].usStackHighWaterMark, (int) pxTaskStatusArray[x].xTaskNumber);
         }
         else
         {
-            ESP_LOGI(TAG, "|%-20s |%-6d |%-4d |%-6d |%-11d|", pxTaskStatusArray[x].pcTaskName,
+            ESP_LOGW(TAG, "|%-20s |%-6d |%-4d |%-6d |%-11d|", pxTaskStatusArray[x].pcTaskName,
                      (int) pxTaskStatusArray[x].eCurrentState, (int) pxTaskStatusArray[x].uxCurrentPriority,
                      (int) pxTaskStatusArray[x].usStackHighWaterMark, (int) pxTaskStatusArray[x].xTaskNumber);
         }
     }
-    ESP_LOGI(TAG, "---------------------------------------------------------");
+    ESP_LOGW(TAG, "---------------------------------------------------------");
 
     // deallocate the array
     free(pxTaskStatusArray);

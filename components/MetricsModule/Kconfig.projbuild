@@ -16,21 +16,21 @@ menu "Metrics Module"
     config M_M_SEND_METRICS_PERIOD
         int
         prompt "Send Metrics Period in minutes"
-        default 1
+        default 10
         help
           Send Metrics Period in minutes
 
     config M_M_BUFFER_SIZE
         int
         prompt "Metrics Buffer Size"
-        default 4096
+        default 1024
         help
           Metrics Buffer Size
 
     config M_M_TASK_STACK_SIZE
         int
         prompt "Metrics Task Stack Size"
-        default 8192
+        default 4096
         help
           Metrics Task Stack Size
 
@@ -45,7 +45,7 @@ menu "Metrics Module"
     config M_M_DEFAULT_DATABASE_URL
         string
         prompt "Default URL"
-        default "https://firestore.googleapis.com/v1/projects/newronny-37128/databases/(default)/documents"
+        default "https://firestore.googleapis.com/v1/projects/metamatter-9ceee/databases/(default)/documents"
         help
           Default URL for the database without "/" at the end
 

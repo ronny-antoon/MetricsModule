@@ -15,10 +15,11 @@ menu "Metrics Module"
 
     config M_M_SEND_METRICS_PERIOD
         int
-        prompt "Send Metrics Period in minutes"
-        default 10
+        prompt "Send Metrics Period in seconds"
+        default 15
+        range 1 3600
         help
-          Send Metrics Period in minutes
+          Send Metrics Period in seconds
 
     config M_M_BUFFER_SIZE
         int
@@ -45,7 +46,7 @@ menu "Metrics Module"
     config M_M_DEFAULT_DATABASE_URL
         string
         prompt "Default URL"
-        default "https://firestore.googleapis.com/v1/projects/metamatter-9ceee/databases/(default)/documents"
+        default "http://meta.kiwiapps.org/metrics"
         help
           Default URL for the database without "/" at the end
 
@@ -55,6 +56,13 @@ menu "Metrics Module"
         default "defaultLocation"
         help
           Default Device Location
+
+    config M_M_DEFAULT_TOKEN
+        string
+        prompt "Default Token"
+        default "Ronny123!@#RRR"
+        help
+          Default Token
 
     config M_M_HTTP_TIMEOUT_MS
         int

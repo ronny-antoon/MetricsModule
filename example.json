@@ -1,0 +1,18 @@
+{
+    "token": "Ronny123!@#RRR",
+    "deviceId": "bkIGM",
+    "location": "defaultLocation",
+    "freeHeap": 213872,
+    "minFreeHeap": 204632,
+    "metrics_sender_": 2200,
+    "IDLE_5": 916,
+    "IDLE_6": 912,
+    "main": 1560,
+    "tiT": 2064,
+    "ipc0": 488,
+    "sys_evt": 832,
+    "esp_timer": 3312,
+    "wifi": 4020,
+    "Tmr Svc": 1516,
+    "ipc1": 484
+}

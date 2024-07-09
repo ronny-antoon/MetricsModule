@@ -1,10 +1,6 @@
 #include "MetricsModule.hpp"
-#include <arch/sys_arch.h>
-#include <esp_event.h>
 #include <esp_http_client.h>
 #include <esp_log.h>
-#include <esp_netif.h>
-#include <esp_netif_sntp.h>
 #include <esp_random.h>
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
@@ -13,8 +9,8 @@
 static const char * TAG = "MetricsModule";
 #define DEVICEID_SIZE 5
 
-MetricsModule::MetricsModule(const char * databaseUrl, const char * deviceLocation) :
-    m_keyId(0), m_senderTaskHandle(nullptr), m_databaseUrl(databaseUrl), m_deviceLocation(deviceLocation)
+MetricsModule::MetricsModule(const char * databaseUrl, const char * deviceLocation, const char * token) :
+    m_senderTaskHandle(nullptr), m_databaseUrl(databaseUrl), m_deviceLocation(deviceLocation), m_token(token)
 {
     ESP_LOGI(TAG, "MetricsModule created");
 
@@ -28,15 +24,20 @@ MetricsModule::MetricsModule(const char * databaseUrl, const char * deviceLocati
         m_deviceLocation = CONFIG_M_M_DEFAULT_DEVICE_LOCATION;
         ESP_LOGW(TAG, "No device Location provided, using default: %s", m_deviceLocation);
     }
+    if (m_token == nullptr)
+    {
+        m_token = CONFIG_M_M_DEFAULT_TOKEN;
+        ESP_LOGW(TAG, "No token provided, using default: %s", m_token);
+    }
 
-    size_t urlSize = strlen(m_databaseUrl) + strlen(m_deviceLocation) + 2;
+    size_t urlSize = strlen(m_databaseUrl) + 2;
     char * fullURL = (char *) malloc(urlSize);
     if (fullURL == nullptr)
     {
         ESP_LOGE(TAG, "Failed to allocate memory for full URL");
         return;
     }
-    snprintf(fullURL, urlSize, "%s/%s", m_databaseUrl, m_deviceLocation);
+    snprintf(fullURL, urlSize, "%s", m_databaseUrl);
     m_databaseUrl = fullURL;
 
     m_metricsBuffer = (char *) calloc(CONFIG_M_M_BUFFER_SIZE, sizeof(char));
@@ -95,37 +96,61 @@ esp_err_t MetricsModule::start()
 void MetricsModule::senderTask(void * pvParameters)
 {
     MetricsModule * self = (MetricsModule *) pvParameters;
-    bool isTimeCorrect   = false;
     while (true)
     {
         if (self->resetBuffer() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to reset buffer");
-            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
             continue;
         }
         if (self->addPrefixJsonToBuffer() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to add prefix JSON to buffer");
-            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
             continue;
         }
-        isTimeCorrect = self->addTimestampToBuffer() == ESP_OK;
+        if (self->addTokenToBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to add token to buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
+            continue;
+        }
+        if (self->addWifiRssiToBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to add wifi RSSI to buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
+            continue;
+        }
         if (self->addDeviceIdToBuffer() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to add device ID to buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
+            continue;
+        }
+        if (self->addLocationToBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to add location to buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
+            continue;
         }
         if (self->addFreeHeapToBuffer() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to add free heap to buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
+            continue;
         }
         if (self->addTasksFreeStackToBuffer() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to add tasks free stack to buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
+            continue;
         }
         if (self->addPostfixJsonToBuffer() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to add postfix JSON to buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
+            continue;
         }
         if (CONFIG_M_M_PRINT_METRICS_BUFFER)
         {
@@ -134,17 +159,17 @@ void MetricsModule::senderTask(void * pvParameters)
                 ESP_LOGE(TAG, "Failed to print metric buffer");
             }
         }
-        if (!isTimeCorrect || !self->checkNetworkConnection())
+        if (!self->checkNetworkConnection())
         {
-            ESP_LOGW(TAG, "No network connection or time not correct. Retrying in %d minutes", CONFIG_M_M_SEND_METRICS_PERIOD);
-            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
+            ESP_LOGW(TAG, "No network connection or time not correct. Retrying in %d seconds", CONFIG_M_M_SEND_METRICS_PERIOD);
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
             continue;
         }
         if (self->sendBufferedMetrics() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to send buffered metrics");
         }
-        vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 60 * 1000 / portTICK_PERIOD_MS);
+        vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
     }
 }
 
@@ -155,7 +180,6 @@ esp_err_t MetricsModule::resetBuffer()
         ESP_LOGE(TAG, "Metrics buffer is not allocated");
         return ESP_ERR_INVALID_STATE;
     }
-    m_keyId = 0;
     memset(m_metricsBuffer, 0, CONFIG_M_M_BUFFER_SIZE);
     return ESP_OK;
 }
@@ -167,7 +191,7 @@ esp_err_t MetricsModule::addPrefixJsonToBuffer()
         ESP_LOGE(TAG, "Metrics buffer is not allocated");
         return ESP_ERR_INVALID_STATE;
     }
-    snprintf(m_metricsBuffer, CONFIG_M_M_BUFFER_SIZE, "{\"fields\":{");
+    snprintf(m_metricsBuffer, CONFIG_M_M_BUFFER_SIZE, "{");
     return ESP_OK;
 }
 
@@ -178,80 +202,95 @@ esp_err_t MetricsModule::addPostfixJsonToBuffer()
         ESP_LOGE(TAG, "Metrics buffer is not allocated");
         return ESP_ERR_INVALID_STATE;
     }
-    strncat(m_metricsBuffer, "}}", CONFIG_M_M_BUFFER_SIZE - strlen(m_metricsBuffer) - 1);
+    strncat(m_metricsBuffer, "}", CONFIG_M_M_BUFFER_SIZE - strlen(m_metricsBuffer) - 1);
     return ESP_OK;
 }
 
 esp_err_t MetricsModule::addMetricToBuffer(const char * metricName, const char * metricValue)
-{
-    return addMetricToBuffer(metricName, metricValue, "integerValue");
-}
-
-esp_err_t MetricsModule::addMetricToBuffer(const char * metricName, const char * metricValue, const char * metricType)
 {
     if (m_metricsBuffer == nullptr)
     {
         ESP_LOGE(TAG, "Metrics buffer is not allocated");
         return ESP_ERR_INVALID_STATE;
     }
-    if (strlen(m_metricsBuffer) + strlen(metricName) + strlen(metricValue) + strlen(metricType) + 32 > CONFIG_M_M_BUFFER_SIZE)
+
+    if (strlen(m_metricsBuffer) + strlen(metricName) + strlen(metricValue) + 5 >= CONFIG_M_M_BUFFER_SIZE)
     {
-        ESP_LOGE(TAG, "Buffer is full. Failed to add metric");
+        ESP_LOGE(TAG, "Not enough space in metrics buffer to add metric");
         return ESP_ERR_NO_MEM;
     }
 
-    size_t currentLength = strlen(m_metricsBuffer);
-    snprintf(m_metricsBuffer + currentLength, CONFIG_M_M_BUFFER_SIZE - currentLength, "\"%s\":{\"%s\":%s},", metricName, metricType,
-             metricValue);
+    // Add a comma if this is not the first metric
+    if (strlen(m_metricsBuffer) > 1)
+    {
+        strncat(m_metricsBuffer, ",", CONFIG_M_M_BUFFER_SIZE - strlen(m_metricsBuffer) - 1);
+    }
+
+    // Format and add the metric to the buffer
+    snprintf(m_metricsBuffer + strlen(m_metricsBuffer), CONFIG_M_M_BUFFER_SIZE - strlen(m_metricsBuffer), "\"%s\":\"%s\"",
+             metricName, metricValue);
+
     return ESP_OK;
 }
 
-esp_err_t MetricsModule::addTimestampToBuffer()
+esp_err_t MetricsModule::addMetricToBuffer(const char * metricName, const int metricValue)
 {
-    char timestamp[30];
-    time_t now;
-    struct tm timeinfo;
-    time(&now);
-
-    // Set timezone to UTC
-    setenv("TZ", "UTC", 1);
-
-    tzset();
-    localtime_r(&now, &timeinfo);
-    if ((timeinfo.tm_year + 1900) < 2020)
+    if (m_metricsBuffer == nullptr)
     {
-        ESP_LOGW(TAG, "Time is not correct (%d year). Skipping timestamp metric", (timeinfo.tm_year + 1900));
-        static bool sntpInitialized = false;
-        if (!sntpInitialized) // Initialize SNTP if not already initialized
-        {
-            esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-            esp_netif_sntp_init(&config);
-            sntpInitialized = true;
-        }
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Metrics buffer is not allocated");
+        return ESP_ERR_INVALID_STATE;
     }
-    strftime(timestamp, sizeof(timestamp), "\"%Y-%m-%dT%H:%M:%SZ\"", &timeinfo);
-    return addMetricToBuffer("timestamp", timestamp, "timestampValue");
+
+    if (strlen(m_metricsBuffer) + strlen(metricName) + 5 >= CONFIG_M_M_BUFFER_SIZE) // 20 characters for the integer value
+    {
+        ESP_LOGE(TAG, "Not enough space in metrics buffer to add metric");
+        return ESP_ERR_NO_MEM;
+    }
+
+    // Add a comma if this is not the first metric
+    if (strlen(m_metricsBuffer) > 1)
+    {
+        strncat(m_metricsBuffer, ",", CONFIG_M_M_BUFFER_SIZE - strlen(m_metricsBuffer) - 1);
+    }
+
+    // Format and add the metric to the buffer
+    snprintf(m_metricsBuffer + strlen(m_metricsBuffer), CONFIG_M_M_BUFFER_SIZE - strlen(m_metricsBuffer), "\"%s\":%d", metricName,
+             metricValue);
+
+    return ESP_OK;
 }
 
 esp_err_t MetricsModule::addDeviceIdToBuffer()
 {
-    return addMetricToBuffer("deviceId", m_deviceId, "stringValue");
+    return addMetricToBuffer("deviceId", m_deviceId);
+}
+
+esp_err_t MetricsModule::addLocationToBuffer()
+{
+    return addMetricToBuffer("location", m_deviceLocation);
+}
+
+esp_err_t MetricsModule::addTokenToBuffer()
+{
+    return addMetricToBuffer("token", m_token);
+}
+
+esp_err_t MetricsModule::addWifiRssiToBuffer()
+{
+    wifi_ap_record_t ap_info;
+    esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to get AP info: %s", esp_err_to_name(err));
+        return err;
+    }
+    return addMetricToBuffer("wifiRssi", ap_info.rssi);
 }
 
 esp_err_t MetricsModule::addFreeHeapToBuffer()
 {
-    const char * freeHeapKey    = "freeHeap";
-    const char * minFreeHeapKey = "minFreeHeap";
-
-    char freeHeapValue[40];
-    snprintf(freeHeapValue, sizeof(freeHeapValue), "%d", (int) esp_get_free_heap_size());
-
-    char minFreeHeapValue[40];
-    snprintf(minFreeHeapValue, sizeof(minFreeHeapValue), "%d", (int) esp_get_minimum_free_heap_size());
-
-    addMetricToBuffer(freeHeapKey, freeHeapValue);
-    addMetricToBuffer(minFreeHeapKey, minFreeHeapValue);
+    addMetricToBuffer("freeHeap", (int) esp_get_free_heap_size());
+    addMetricToBuffer("minFreeHeap", (int) esp_get_minimum_free_heap_size());
 
     return ESP_OK;
 }
@@ -279,7 +318,6 @@ esp_err_t MetricsModule::addTasksFreeStackToBuffer()
     for (UBaseType_t i = 0; i < uxArraySize; i++)
     {
         char metricName[40];
-        char metricValue[40];
         if (strcmp(pxTaskStatusArray[i].pcTaskName, "IDLE") == 0)
         {
             snprintf(metricName, sizeof(metricName), "IDLE_%d", (int) pxTaskStatusArray[i].xTaskNumber);
@@ -288,8 +326,7 @@ esp_err_t MetricsModule::addTasksFreeStackToBuffer()
         {
             snprintf(metricName, sizeof(metricName), "%s", pxTaskStatusArray[i].pcTaskName);
         }
-        snprintf(metricValue, sizeof(metricValue), "%d", (int) pxTaskStatusArray[i].usStackHighWaterMark);
-        addMetricToBuffer(metricName, metricValue);
+        addMetricToBuffer(metricName, (int) pxTaskStatusArray[i].usStackHighWaterMark);
     }
 
     free(pxTaskStatusArray);
@@ -379,10 +416,7 @@ esp_err_t MetricsModule::generateRandomDeviceId()
     esp_fill_random(randomBytes, DEVICEID_SIZE);
 
     // Array to hold the device ID string with quotes and null terminator
-    char deviceId[DEVICEID_SIZE + 2 + 1];
-
-    // Add the opening quote
-    deviceId[0] = '"';
+    char deviceId[DEVICEID_SIZE + 1];
 
     // Convert random bytes to English letters
     for (int i = 0; i < DEVICEID_SIZE; i++)
@@ -390,17 +424,16 @@ esp_err_t MetricsModule::generateRandomDeviceId()
         uint8_t randValue = randomBytes[i] % 52; // 52 letters in the English alphabet (26 uppercase + 26 lowercase)
         if (randValue < 26)
         {
-            deviceId[i + 1] = 'A' + randValue; // Map to uppercase letters
+            deviceId[i] = 'A' + randValue; // Map to uppercase letters
         }
         else
         {
-            deviceId[i + 1] = 'a' + (randValue - 26); // Map to lowercase letters
+            deviceId[i] = 'a' + (randValue - 26); // Map to lowercase letters
         }
     }
 
     // Add the closing quote and null terminator
-    deviceId[DEVICEID_SIZE + 1] = '"';
-    deviceId[DEVICEID_SIZE + 2] = '\0';
+    deviceId[DEVICEID_SIZE] = '\0';
 
     // Duplicate the string to m_deviceId
     m_deviceId = strdup(deviceId);

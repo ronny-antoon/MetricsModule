@@ -17,7 +17,7 @@ public:
      * @param databaseUrl URL of the database to send metrics to.
      * @param deviceLocation Location of the device.
      */
-    MetricsModule(const char * databaseUrl = nullptr, const char * deviceLocation = nullptr);
+    MetricsModule(const char * databaseUrl = nullptr, const char * deviceLocation = nullptr, const char * token = nullptr);
 
     /**
      * @brief Destroys the MetricsModule object.
@@ -33,12 +33,12 @@ public:
     static void printStackTask();
 
 private:
-    uint8_t m_keyId;                 ///< Key ID for metrics buffer.
     char * m_metricsBuffer;          ///< Buffer for storing metrics data.
     TaskHandle_t m_senderTaskHandle; ///< Handle for the sender task.
     const char * m_databaseUrl;      ///< URL of the metrics database.
     const char * m_deviceId;         ///< Device ID for metrics.
     const char * m_deviceLocation;   ///< Location of the device.
+    const char * m_token;            ///< Token for the metrics database.
 
     /**
      * @brief Task function for sending metrics data.
@@ -79,19 +79,19 @@ private:
      * @param metricType Type of the metric.
      * @return ESP_OK on success, error code otherwise.
      */
-    esp_err_t addMetricToBuffer(const char * metricName, const char * metricValue, const char * metricType);
-
-    /**
-     * @brief Adds a timestamp to the metrics buffer.
-     * @return ESP_OK on success, error code otherwise.
-     */
-    esp_err_t addTimestampToBuffer();
+    esp_err_t addMetricToBuffer(const char * metricName, const int metricValue);
 
     /**
      * @brief Adds the device ID to the metrics buffer.
      * @return ESP_OK on success, error code otherwise.
      */
     esp_err_t addDeviceIdToBuffer();
+
+    esp_err_t addLocationToBuffer();
+
+    esp_err_t addTokenToBuffer();
+
+    esp_err_t addWifiRssiToBuffer();
 
     /**
      * @brief Adds the free heap size to the metrics buffer.

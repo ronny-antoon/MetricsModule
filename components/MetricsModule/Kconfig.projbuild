@@ -24,7 +24,7 @@ menu "Metrics Module"
     config M_M_BUFFER_SIZE
         int
         prompt "Metrics Buffer Size"
-        default 1024
+        default 512
         help
           Metrics Buffer Size
 

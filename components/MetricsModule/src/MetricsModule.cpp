@@ -116,12 +116,6 @@ void MetricsModule::senderTask(void * pvParameters)
             vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
             continue;
         }
-        if (self->addWifiRssiToBuffer() != ESP_OK)
-        {
-            ESP_LOGE(TAG, "Failed to add wifi RSSI to buffer");
-            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
-            continue;
-        }
         if (self->addDeviceIdToBuffer() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to add device ID to buffer");
@@ -143,6 +137,12 @@ void MetricsModule::senderTask(void * pvParameters)
         if (self->addTasksFreeStackToBuffer() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to add tasks free stack to buffer");
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
+            continue;
+        }
+        if (self->addWifiRssiToBuffer() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to add wifi RSSI to buffer");
             vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
             continue;
         }

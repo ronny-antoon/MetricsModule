@@ -59,7 +59,7 @@ MetricsModule::~MetricsModule()
     {
         vTaskDelete(m_senderTaskHandle);
     }
-    free((void *) m_metricsBuffer);
+    free(m_metricsBuffer);
     free((void *) m_databaseUrl);
     free((void *) m_deviceId);
 
@@ -289,9 +289,9 @@ esp_err_t MetricsModule::addWifiRssiToBuffer()
 
 esp_err_t MetricsModule::addFreeHeapToBuffer()
 {
-    addMetricToBuffer("freeHeap", (int) esp_get_free_heap_size());
-    addMetricToBuffer("minFreeHeap", (int) esp_get_minimum_free_heap_size());
-
+    addMetricToBuffer("freeHeap", (int) heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
+    addMetricToBuffer("minFreeHeap", (int) heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT));
+    addMetricToBuffer("largestFreeBlock", (int) heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
     return ESP_OK;
 }
 

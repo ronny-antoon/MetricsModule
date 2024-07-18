@@ -1,8 +1,8 @@
 dependencies:
   idf:
-    version: '>=4.0'
+    version: '>=5.0'
 description: 'MetricsModule is a C++ class designed for collecting and sending metrics data from an ESP32-based device. The module supports buffering metrics in JSON format and sending them to a specified database URL. It integrates with FreeRTOS for task management and leverages ESP-IDF for network and logging capabilities.'
 repository: 'https://github.com/ronny-antoon/MetricsModule'
 url: 'https://github.com/ronny-antoon/MetricsModule'
 license: MIT
-version: '4.6.0'
+version: '5.0.0'

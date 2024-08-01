@@ -77,4 +77,11 @@ menu "Metrics Module"
         default y
         help
           Print Metrics Buffer
+    
+    config FREERTOS_USE_TRACE_FACILITY
+        bool
+        prompt "Use FreeRTOS Trace Facility"
+        default y
+        help
+          Use FreeRTOS Trace Facility
 endmenu

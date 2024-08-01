@@ -1,4 +1,5 @@
 #include "MetricsModule.hpp"
+
 #include <esp_http_client.h>
 #include <esp_log.h>
 #include <esp_random.h>
@@ -492,3 +493,26 @@ void MetricsModule::printStackTask()
     // deallocate the array
     free(pxTaskStatusArray);
 }
+
+// int ringbuffer_log_vprintf(const char *format, va_list paramList)
+// {
+//   va_list copy;
+//   va_copy(copy, paramList);
+//   int size = vsnprintf(NULL, 0, format, copy);
+//   va_end(copy);
+//   if (!size)
+//   {
+//     // your error handling here
+//     return 0;
+//   }
+//   char *ar = malloc(size + 2);
+//   va_copy(copy, paramList);
+//   size = vsnprintf(ar, size + 1, format, paramList);
+//   va_end(copy);
+//   // copy ar to the ringbuffer
+//   [...]
+//   free(ar);
+//   // write to stdout
+//   [...]
+//   return size;
+// }

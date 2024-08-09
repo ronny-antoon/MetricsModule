@@ -28,7 +28,8 @@
         "functional": "cpp",
         "variant": "cpp",
         "*.ipp": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "*.inc": "cpp"
     },
     "idf.espIdfPathWin": "C:\\Users\\RonnyPC\\esptest53\\v5.3\\esp-idf",
     "idf.pythonBinPathWin": "C:\\Users\\RonnyPC\\esptest53\\.espressif\\python_env\\idf5.3_py3.11_env\\Scripts\\python.exe",

@@ -147,6 +147,12 @@ void MetricsModule::senderTask(void * pvParameters)
             vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
             continue;
         }
+        if (!self->checkNetworkConnection())
+        {
+            ESP_LOGW(TAG, "No network connection or time not correct. Retrying in %d seconds", CONFIG_M_M_SEND_METRICS_PERIOD);
+            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
+            continue;
+        }
         if (self->addPostfixJsonToBuffer() != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to add postfix JSON to buffer");
@@ -159,12 +165,6 @@ void MetricsModule::senderTask(void * pvParameters)
             {
                 ESP_LOGE(TAG, "Failed to print metric buffer");
             }
-        }
-        if (!self->checkNetworkConnection())
-        {
-            ESP_LOGW(TAG, "No network connection or time not correct. Retrying in %d seconds", CONFIG_M_M_SEND_METRICS_PERIOD);
-            vTaskDelay(CONFIG_M_M_SEND_METRICS_PERIOD * 1000 / portTICK_PERIOD_MS);
-            continue;
         }
         if (self->sendBufferedMetrics() != ESP_OK)
         {
@@ -285,6 +285,14 @@ esp_err_t MetricsModule::addWifiRssiToBuffer()
         ESP_LOGE(TAG, "Failed to get AP info: %s", esp_err_to_name(err));
         return err;
     }
+
+    err = addMetricToBuffer("wifiSSID", (char *) ap_info.ssid);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to add WiFi SSID to buffer: %s", esp_err_to_name(err));
+        return err;
+    }
+
     return addMetricToBuffer("wifiRssi", ap_info.rssi);
 }
 
@@ -394,6 +402,10 @@ bool MetricsModule::checkNetworkConnection()
         ESP_LOGW(TAG, "Failed to get IPv4 address info");
         return false;
     }
+
+    char ipAddrStr[16];
+    snprintf(ipAddrStr, sizeof(ipAddrStr), IPSTR, IP2STR(&ip4_info.ip));
+    addMetricToBuffer("ipAddress", ipAddrStr);
 
     return true;
 }
